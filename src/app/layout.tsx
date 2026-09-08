@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "중도금 대출 이자 계산기",
@@ -26,7 +27,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           />
         )}
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <div className="text-center py-5 text-[12px] text-ink-soft">
+          <Link href="/privacy" className="underline hover:text-ink">
+            개인정보처리방침
+          </Link>
+        </div>
+      </body>
     </html>
   );
 }
