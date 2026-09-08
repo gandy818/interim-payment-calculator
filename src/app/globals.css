@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #eeefe8;
+  --paper-raised: #f6f6f1;
+  --ink: #1c2530;
+  --ink-soft: #565f57;
+  --line: #cfd0c2;
+  --line-strong: #1c2530;
+  --gold: #a9782f;
+  --gold-soft: #ede1c8;
+  --green: #33574a;
+  --green-soft: #dfe8e2;
+  --red: #8a3b32;
+
+  --font-serif-kr: "Nanum Myeongjo", "Noto Serif KR", ui-serif, "Apple SD Gothic Neo",
+    "Malgun Gothic", serif;
+  --font-sans-kr: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo",
+    "Malgun Gothic", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-red: var(--red);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans-kr);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(14%) sepia(15%) saturate(700%) hue-rotate(175deg);
+  cursor: pointer;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
