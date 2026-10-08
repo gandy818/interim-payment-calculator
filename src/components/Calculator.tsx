@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Installment,
   calcAll,
@@ -17,60 +17,69 @@ function nextId(): string {
   return `row-${Date.now()}-${idCounter}`;
 }
 
-const SEED: Installment[] = [
-  {
-    id: nextId(),
-    label: "1차 중도금",
-    amount: 120_000_000,
-    paidOn: "2025-03-15",
+const INTERVAL_OPTIONS = [3, 4, 5, 6, 7, 8];
+
+// "2025-03-15" + 6개월 → "2025-09-15"
+// 1월 31일 + 1개월처럼 없는 날짜는 그 달의 마지막 날로 맞춤
+function addMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const total = m - 1 + months;
+  const year = y + Math.floor(total / 12);
+  const month = ((total % 12) + 12) % 12;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+const DEFAULT_INTERVAL = 6; // 예시 데이터의 기본 납부 간격(개월)
+const DEFAULT_AMOUNT = 120_000_000; // 회차별 기본 대출원금
+
+// [수정] 날짜를 인자로 받고, id를 고정값으로 → 같은 날짜면 항상 같은 결과
+function makeSeed(start: string): Installment[] {
+  return Array.from({ length: 6 }, (_, i) => ({
+    id: `seed-${i}`,
+    label: `${i + 1}차 중도금`,
+    amount: DEFAULT_AMOUNT,
+    paidOn: addMonths(start, DEFAULT_INTERVAL * i),
     ratePct: 4.6,
-  },
-  {
-    id: nextId(),
-    label: "2차 중도금",
-    amount: 120_000_000,
-    paidOn: "2025-09-15",
-    ratePct: 4.6,
-  },
-  {
-    id: nextId(),
-    label: "3차 중도금",
-    amount: 120_000_000,
-    paidOn: "2026-03-15",
-    ratePct: 4.8,
-  },
-  {
-    id: nextId(),
-    label: "4차 중도금",
-    amount: 120_000_000,
-    paidOn: "2026-03-15",
-    ratePct: 4.8,
-  },
-  {
-    id: nextId(),
-    label: "5차 중도금",
-    amount: 120_000_000,
-    paidOn: "2026-03-15",
-    ratePct: 4.8,
-  },
-  {
-    id: nextId(),
-    label: "6차 중도금",
-    amount: 120_000_000,
-    paidOn: "2026-03-15",
-    ratePct: 4.8,
-  },
-];
+  }));
+}
+
+// [수정] 오늘 날짜를 브라우저에서만 읽기 위한 구독 함수 (변경 알림은 필요 없음)
+const noopSubscribe = () => () => {};
 
 export default function Calculator() {
-  const [rows, setRows] = useState<Installment[]>(SEED);
-  const [baseMode, setBaseMode] = useState<"today" | "custom">("today");
-  const [customBase, setCustomBase] = useState<string>(todayISO());
+  // [수정] 서버(빌드)에서는 "", 브라우저에서는 실제 오늘 날짜
+  const today = useSyncExternalStore(noopSubscribe, todayISO, () => "");
+
+  // [수정] 사용자가 아직 아무것도 안 건드렸으면 null → 오늘 기준 예시 데이터 표시
+  const [editedRows, setEditedRows] = useState<Installment[] | null>(null);
+  const [endDate, setEndDate] = useState<string>(""); // 비어 있으면 오늘 기준
   const [defaultRate, setDefaultRate] = useState<number>(4.6);
+  const [defaultAmount, setDefaultAmount] = useState<number>(DEFAULT_AMOUNT);
+  const [intervalMonths, setIntervalMonths] = useState<number | null>(
+    DEFAULT_INTERVAL,
+  );
 
-  const baseDate = baseMode === "today" ? todayISO() : customBase || todayISO();
+  const seedRows = useMemo(() => (today ? makeSeed(today) : []), [today]);
+  const rows = editedRows ?? seedRows;
 
-  const results = useMemo(() => calcAll(rows, baseDate), [rows, baseDate]);
+  // 기존 setRows(prev => ...) 코드를 그대로 쓸 수 있게 감싼 함수
+  function setRows(updater: (prev: Installment[]) => Installment[]) {
+    setEditedRows((prev) => updater(prev ?? seedRows));
+  }
+
+  const lastPaidOn = rows[rows.length - 1]?.paidOn ?? "";
+  const autoEndDate =
+    lastPaidOn && intervalMonths
+      ? addMonths(lastPaidOn, intervalMonths)
+      : lastPaidOn;
+  const baseDate = endDate || autoEndDate || today;
+
+  const results = useMemo(
+    () => (baseDate ? calcAll(rows, baseDate) : []),
+    [rows, baseDate],
+  );
   const resultMap = useMemo(
     () => Object.fromEntries(results.map((r) => [r.id, r])),
     [results],
@@ -93,8 +102,11 @@ export default function Calculator() {
       {
         id: nextId(),
         label: `${prev.length + 1}차 중도금`,
-        amount: 0,
-        paidOn: todayISO(),
+        amount: defaultAmount,
+        paidOn:
+          intervalMonths && prev.length > 0 && prev[prev.length - 1].paidOn
+            ? addMonths(prev[prev.length - 1].paidOn, intervalMonths)
+            : today || todayISO(),
         ratePct: defaultRate,
       },
     ]);
@@ -102,6 +114,34 @@ export default function Calculator() {
 
   function removeRow(id: string) {
     setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function applyInterval(months: number) {
+    setIntervalMonths(months);
+    setRows((prev) => {
+      const start = prev[0]?.paidOn;
+      if (!start) return prev; // 1회차 날짜가 비어 있으면 아무것도 안 함
+      return prev.map((r, i) => ({
+        ...r,
+        paidOn: addMonths(start, months * i),
+      }));
+    });
+  }
+
+  function changeStartDate(value: string) {
+    if (!value) return; // [수정] 날짜를 지웠을 때 "" 로 계산되어 NaN 나오는 것 방지
+    setRows((prev) =>
+      prev.map((r, i) => {
+        if (i === 0) return { ...r, paidOn: value };
+        if (!intervalMonths) return r;
+        return { ...r, paidOn: addMonths(value, intervalMonths * i) };
+      }),
+    );
+  }
+
+  function changeAmount(value: number) {
+    setDefaultAmount(value);
+    setRows((prev) => prev.map((r) => ({ ...r, amount: value })));
   }
 
   return (
@@ -123,39 +163,56 @@ export default function Calculator() {
       </header>
 
       {/* Settings */}
-      <section className="py-8 border-b border-line grid gap-6 sm:grid-cols-2">
+      <section className="py-8 border-b border-line grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <p className="text-[13px] text-ink-soft mb-2">계산 기준일</p>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <label className="flex items-center gap-2 text-[14px] cursor-pointer">
-              <input
-                type="radio"
-                name="baseMode"
-                checked={baseMode === "today"}
-                onChange={() => setBaseMode("today")}
-                className="accent-[var(--color-ink)]"
-              />
-              오늘 ({todayISO()})
-            </label>
-            <label className="flex items-center gap-2 text-[14px] cursor-pointer">
-              <input
-                type="radio"
-                name="baseMode"
-                checked={baseMode === "custom"}
-                onChange={() => setBaseMode("custom")}
-                className="accent-[var(--color-ink)]"
-              />
-              직접 입력 (예: 잔금 예정일)
-            </label>
-            {baseMode === "custom" && (
-              <input
-                type="date"
-                value={customBase}
-                onChange={(e) => setCustomBase(e.target.value)}
-                className="border border-line bg-paper-raised px-2 py-1 text-[14px] outline-none focus:border-line-strong"
-              />
+          <p className="text-[13px] text-ink-soft mb-2">1회차 중도금 납부일</p>
+          <input
+            type="date"
+            value={rows[0]?.paidOn ?? ""}
+            onChange={(e) => changeStartDate(e.target.value)}
+            disabled={rows.length === 0}
+            className="border border-line bg-paper-raised px-2 py-1 text-[14px] outline-none focus:border-line-strong tabular"
+          />
+        </div>
+        <div>
+          <p className="text-[13px] text-ink-soft mb-2">회차별 대출원금</p>
+          <div className="flex items-center gap-2">
+            <input
+              inputMode="numeric"
+              value={formatNumber(defaultAmount)}
+              onChange={(e) => changeAmount(parseDigits(e.target.value))}
+              className="w-36 border border-line bg-paper-raised px-2 py-1 text-[14px] text-right tabular outline-none focus:border-line-strong"
+            />
+            <span className="text-[14px] text-ink-soft">원</span>
+          </div>
+          <p className="mt-1.5 text-[12.5px] text-ink-soft break-keep">
+            모든 회차에 같은 금액이 들어가요. 회차마다 다르면 표에서 직접
+            고쳐주세요.
+          </p>
+        </div>
+        <div>
+          <p className="text-[13px] text-ink-soft mb-2">잔금(입주) 예정일</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={endDate || autoEndDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="border border-line bg-paper-raised px-2 py-1 text-[14px] outline-none focus:border-line-strong tabular"
+            />
+            {endDate && (
+              <button
+                onClick={() => setEndDate("")}
+                className="text-[12.5px] text-ink-soft hover:text-ink cursor-pointer"
+              >
+                되돌리기
+              </button>
             )}
           </div>
+          <p className="mt-1.5 text-[12.5px] text-ink-soft break-keep">
+            {endDate
+              ? "이 날짜까지 쌓인 이자를 계산해요."
+              : "마지막 회차 납부일에서 납부 간격만큼 지난 날로 계산해요. 실제 잔금일로 바꿀 수 있어요."}
+          </p>
         </div>
         <div>
           <p className="text-[13px] text-ink-soft mb-2">
@@ -180,6 +237,27 @@ export default function Calculator() {
           <h2 className="text-[15px] text-ink">중도금 납부 내역</h2>
           <span className="text-[13px] text-ink-soft tabular">
             {rows.length}개 회차
+          </span>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-[13px] text-ink-soft mr-1">납부 간격</span>
+          {INTERVAL_OPTIONS.map((m) => (
+            <button
+              key={m}
+              onClick={() => applyInterval(m)}
+              className={`border px-3 py-1.5 text-[13px] cursor-pointer tabular ${
+                intervalMonths === m
+                  ? "border-ink bg-ink text-paper-raised"
+                  : "border-line text-ink hover:border-line-strong"
+              }`}
+            >
+              {m}개월
+            </button>
+          ))}
+          <span className="text-[12.5px] text-ink-soft basis-full sm:basis-auto sm:ml-2">
+            1회차 납부일을 기준으로 이후 회차 날짜를 채웁니다. 채운 뒤에도 직접
+            수정할 수 있어요.
           </span>
         </div>
 
@@ -284,7 +362,7 @@ export default function Calculator() {
                   </tr>
                 );
               })}
-              {rows.length === 0 && (
+              {rows.length === 0 && today && (
                 <tr>
                   <td
                     colSpan={7}
@@ -314,7 +392,7 @@ export default function Calculator() {
             value={formatWon(summary.totalPrincipal)}
           />
           <SummaryLine
-            label={`총 누적이자 (${baseDate} 기준)`}
+            label={baseDate ? `총 누적이자 (${baseDate} 기준)` : "총 누적이자"}
             value={formatWon(summary.totalInterest)}
             emphasize
           />
