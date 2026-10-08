@@ -39,6 +39,27 @@ const SEED: Installment[] = [
     paidOn: "2026-03-15",
     ratePct: 4.8,
   },
+  {
+    id: nextId(),
+    label: "4차 중도금",
+    amount: 120_000_000,
+    paidOn: "2026-03-15",
+    ratePct: 4.8,
+  },
+  {
+    id: nextId(),
+    label: "5차 중도금",
+    amount: 120_000_000,
+    paidOn: "2026-03-15",
+    ratePct: 4.8,
+  },
+  {
+    id: nextId(),
+    label: "6차 중도금",
+    amount: 120_000_000,
+    paidOn: "2026-03-15",
+    ratePct: 4.8,
+  },
 ];
 
 export default function Calculator() {
@@ -163,7 +184,7 @@ export default function Calculator() {
         </div>
 
         <div className="overflow-x-auto border border-line-strong">
-          <table className="w-full min-w-[720px] border-collapse text-[14px]">
+          <table className="w-full min-w-180 border-collapse text-[14px]">
             <thead>
               <tr className="border-b border-line-strong text-left text-[13px] text-ink-soft">
                 <th className="py-2.5 px-3 font-normal w-[15%]">회차</th>

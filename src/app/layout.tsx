@@ -26,6 +26,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             strategy="beforeInteractive"
           />
         )}
+        <meta
+          name="google-site-verification"
+          content="61kKayX9b9YaKW5B3pumEICyhJV8Ht5WQc-aQStVbsg"
+        />
       </head>
       <body className="min-h-full flex flex-col">
         {children}
